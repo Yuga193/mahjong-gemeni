@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mahjongAI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Alice&display=swap" rel="stylesheet"> 
+    <style>
+        body {
+            font-family: 'Alice', serif;
+            background: linear-gradient(135deg, #f0f8ff 0%, #e6e6fa 100%); /* Gradient background */
+            color: #333;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h2, h3 {
+            color: #4169e1; /* Royal Blue for headers */
+            text-decoration: none;
+            font-weight: normal;
+        }
+
+        .tile {
+            width: 50px;
+            height: 70px;
+            border: 3px solid #000000; /* Changed border color to black */
+            border-radius: 8px;
+            display: inline-block;
+            margin: 10px;
+            background-size: cover;
+            cursor: pointer;
+            box-shadow: 3px 3px 6px rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .tile.selected {
+            transform: translateY(-10px);
+            box-shadow: 6px 6px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .message {
+            padding: 15px;
+            margin: 20px auto;
+            border-radius: 25px;
+            max-width: 90%;
+            font-size: 18px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .user-message {
+            background-color: #ffefd5;
+            float: right;
+            border-bottom-right-radius: 0;
+            border-top-right-radius: 35px;
+        }
+
+        .ai-message {
+            background-color: #f0f8ff;
+            margin: auto;
+            border-radius: 15px;
+        }
+
+        #selected-tile {
+            margin-top: 20px;
+            font-size: 20px;
+            color: #4169e1;
+        }
+
+        button {
+            background-color: #ffffff;
+            color: #000000;
+            padding: 15px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background-color 0.3s, transform 0.3s;
+        }
+
+        button:hover {
+            background-color: #e6e6fa;
+            transform: scale(1.1);
+        }
+
+        button:disabled {
+            background-color: #d3d3d3;
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 600px) {
+            #chat-container, #hand-container {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h2>麻雀教室</h2>
+    <div id="dora-container">
+        <h3>ドラ表示牌: <span id="doraA-display">なし</span></h3>
+        <h3>自風: <span id="player-wind-display">なし</span></h3> <!-- 自風表示 -->
+        <h3>場風: <span id="round-wind-display">なし</span></h3> <!-- 場風表示 -->
+    </div>
+    <div id="hand-container"></div>
+    <div id="selected-tile">選択した牌: なし</div>
+    <button id="confirm-button" disabled>きいてみる</button>
+
+    <div id="chat-container" style="background-color: #f0f8ff; border-radius: 15px; padding: 15px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);">
+        <div id="thinking-message" class="thinking-message" style="display: none; font-style: italic; color: #4169e1;">
+            考え中……
+        </div>
+    </div>
+
+    {{ hand|json_script:"hand-data" }}
+    {{ discards|json_script:"discards-data" }} 
+    {{ player_wind|json_script:"player-wind-data" }}
+    {{ round_wind|json_script:"round-wind-data" }}
+
+    <form>
+        {% csrf_token %}
+    </form>
+
+    <script>
+        const doraA = '{{ doraA }}';
+        document.getElementById('doraA-display').textContent = doraA; 
+        const playerWind = JSON.parse(document.getElementById('player-wind-data').textContent); 
+        document.getElementById('player-wind-display').textContent = playerWind; // 修正: 正しい要素IDを使用
+        const roundWind = JSON.parse(document.getElementById('round-wind-data').textContent);
+        document.getElementById('round-wind-display').textContent = roundWind; // 修正: 正しい要素IDを使用 
+        const hand = JSON.parse(document.getElementById('hand-data').textContent);
+        const discards = JSON.parse(document.getElementById('discards-data').textContent);
+        const handContainer = document.getElementById("hand-container");
+        const selectedTileDisplay = document.getElementById("selected-tile");
+        const confirmButton = document.getElementById("confirm-button");
+        const chatContainer = document.getElementById("chat-container");
+        const thinkingMessage = document.getElementById("thinking-message");
+    
+        const tileOrder = {
+            '1m': 1, '2m': 2, '3m': 3, '4m': 4, '5m': 5, '6m': 6, '7m': 7, '8m': 8, '9m': 9,
+            '1p': 11, '2p': 12, '3p': 13, '4p': 14, '5p': 15, '6p': 16, '7p': 17, '8p': 18, '9p': 19,
+            '1s': 21, '2s': 22, '3s': 23, '4s': 24, '5s': 25, '6s': 26, '7s': 27, '8s': 28, '9s': 29,
+            '東': 31, '南': 32, '西': 33, '北': 34, '白': 35, '發': 36, '中': 37
+        };
+    
+        hand.sort((a, b) => tileOrder[a] - tileOrder[b]);
+    
+        hand.forEach(tile => {
+            const tileElement = document.createElement("div");
+            tileElement.className = "tile";
+            tileElement.dataset.tile = tile;
+    
+            const tileFilename = {
+                '東': 'ton',
+                '南': 'nan',
+                '西': 'sha',
+                '北': 'pei',
+                '白': 'haku',
+                '發': 'hatsu',
+                '中': 'chun'
+            }[tile] || tile;
+    
+            tileElement.style.backgroundImage = `url('/static/images/tiles/${tileFilename}.gif')`;
+    
+            tileElement.addEventListener('click', () => {
+                document.querySelectorAll('.tile.selected').forEach(el => el !== tileElement && el.classList.remove('selected'));
+                tileElement.classList.toggle('selected');
+                const isSelected = tileElement.classList.contains('selected');
+                selectedTileDisplay.textContent = isSelected ? "選択した牌: " + tile : "選択した牌: なし";
+                confirmButton.disabled = !isSelected;
+            });
+    
+            handContainer.appendChild(tileElement);
+        });
+    
+        confirmButton.addEventListener('click', () => {
+        const selectedTile = document.querySelector('.tile.selected').dataset.tile;
+        const handData = JSON.stringify(hand);
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        confirmButton.disabled = true;
+        thinkingMessage.style.display = 'block';
+
+        fetch('/analyze-hand/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                hand: handData,
+                selectedTile: selectedTile,
+                doraA: doraA,
+                playerWind: playerWind, // 自風をリクエストに含める
+                roundWind: roundWind // 場風をリクエストに含める
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            const formattedCommentary = data.commentary.replace(/\n/g, '<br>'); 
+            chatContainer.innerHTML = `<div class="ai-message">${data.commentary}</div>`;
+            thinkingMessage.style.display = 'none';
+            confirmButton.disabled = false;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            thinkingMessage.style.display = 'none';
+            confirmButton.disabled = false;
+        });
+    });
+</script>
+</body>
+</html>
